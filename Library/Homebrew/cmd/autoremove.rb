@@ -14,12 +14,12 @@ module Homebrew
         switch "-n", "--dry-run",
                description: "List what would be uninstalled, but do not actually uninstall anything."
 
-        named_args :none
+        named_args [:installed_formula, :installed_cask], max: 1
       end
 
       sig { override.void }
       def run
-        Cleanup.autoremove(dry_run: args.dry_run?)
+        Cleanup.autoremove(dry_run: args.dry_run?, named_args: args.named)
       end
     end
   end

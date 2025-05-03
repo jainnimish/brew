@@ -706,7 +706,7 @@ module Homebrew
       puts "from #{HOMEBREW_PREFIX}"
     end
 
-    def self.autoremove(dry_run: false)
+    def self.autoremove(dry_run: false, named_args: [])
       require "utils/autoremove"
       require "cask/caskroom"
 
@@ -714,19 +714,7 @@ module Homebrew
       # the cache of installed formulae may no longer be valid.
       Formula.clear_cache unless dry_run
 
-      formulae = Formula.installed
-      # Remove formulae listed in HOMEBREW_NO_CLEANUP_FORMULAE and their dependencies.
-      if Homebrew::EnvConfig.no_cleanup_formulae.present?
-        formulae -= formulae.select { skip_clean_formula?(_1) }
-                            .flat_map { |f| [f, *f.runtime_formula_dependencies] }
-      end
-      casks = Cask::Caskroom.casks
-
-      removable_formulae = Utils::Autoremove.removable_formulae(formulae, casks)
-
-      return if removable_formulae.blank?
-
-      formulae_names = removable_formulae.map(&:full_name).sort
+      formulae_names = named_args.map { |f| [f, *f.runtime_formula_dependencies] }
 
       verb = dry_run ? "Would autoremove" : "Autoremoving"
       oh1 "#{verb} #{formulae_names.count} unneeded #{Utils.pluralize("formula", formulae_names.count, plural: "e")}:"
