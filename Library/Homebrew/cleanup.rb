@@ -706,17 +706,28 @@ module Homebrew
       puts "from #{HOMEBREW_PREFIX}"
     end
 
-    def self.rem(child, par, unused)
-      return unused if child.deps.send("required").count == 0
-      dependents = []
+    def self.remover(package)
+      unneeded = [Formula[package]]
+      need_stack = []
 
-      child.runtime_installed_formula_dependents.each do
-        |x| dependents << x if x.deps.send("required").include? child
+      Formula[package].deps.send("required").each do
+        |child| need_stack << [Formula[package], Formula[child.name]]
       end
 
-      return unused if dependents.count > 1
-      unused << child
-      child.deps.send("required").uniq.each{|gc| self.rem(Formula[gc.name], child, unused)}
+      while need_stack.count > 0 do
+        curr = need_stack.shift
+        dependents = curr.last.runtime_installed_formula_dependents.select {
+          |par| par.deps.send("required").map(&:name).include? curr.last.name
+        }
+
+        if dependents.count == 1 && dependents.first.name == curr.first.name
+         unneeded << curr.last
+         curr.last.deps.send("required").each do
+          |gc| need_stack << [curr.last, Formula[gc.name]]
+         end
+        end
+      end
+      unneeded
     end
 
     def self.autoremove(dry_run: false, named_args: [])
@@ -727,39 +738,19 @@ module Homebrew
       # the cache of installed formulae may no longer be valid.
       Formula.clear_cache unless dry_run
 
-      unneeded = [Formula[named_args.first]]
-      need_stack = []
-
-      Formula[named_args.first].deps.send("required").each do
-        |x| need_stack << [Formula[named_args.first], Formula[x.name]]
-      end
-
-      while need_stack.count > 0 do
-        curr = need_stack.shift
-        dependents = curr.last.runtime_installed_formula_dependents.select{ |par| par.deps.send("required").map(&:name).include? curr.last.name}
-
-        if dependents.count == 1 && dependents.first.name == curr.first.name
-         unneeded << curr.last
-         curr.last.deps.send("required").each do
-          |gc| need_stack << [curr.last, Formula[gc.name]]
-         end
+      named_args.each do |package|
+        verb = dry_run ? "Would autoremove" : "Autoremoving"
+        unneeded = remover(package)
+        oh1 "#{verb} #{unneeded.count} unneeded #{Utils.pluralize("formula", unneeded.count, plural: "e")} for #{package}:"
+        unneeded.each do |elem|
+          puts "#{Formatter.error("✘")}#{Tty.bold} #{elem.name}#{Tty.reset}"
         end
+        next if dry_run
+        require "uninstall"
+        kegs_by_rack = unneeded.filter_map(&:any_installed_keg).group_by(&:rack)
+        Uninstall.uninstall_kegs(kegs_by_rack)
+        Formula.clear_cache
       end
-
-      verb = dry_run ? "Would autoremove" : "Autoremoving"
-      oh1 "#{verb} #{unneeded.count} unneeded #{Utils.pluralize("formula", unneeded.count, plural: "e")}:"
-      unneeded.each do |elem|
-        puts "#{Formatter.error("✘")}#{Tty.bold} #{elem.name}#{Tty.reset}"
-      end
-      return if dry_run
-
-      require "uninstall"
-
-      kegs_by_rack = unneeded.filter_map(&:any_installed_keg).group_by(&:rack)
-      Uninstall.uninstall_kegs(kegs_by_rack)
-
-      # The installed formula cache will be invalid after uninstalling.
-      Formula.clear_cache
     end
   end
 end

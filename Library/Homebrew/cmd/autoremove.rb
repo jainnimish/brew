@@ -14,7 +14,7 @@ module Homebrew
         switch "-n", "--dry-run",
                description: "List what would be uninstalled, but do not actually uninstall anything."
 
-        named_args [:installed_formula, :installed_cask], max: 1
+        named_args [:installed_formula], min: 1
       end
 
       sig { override.void }
