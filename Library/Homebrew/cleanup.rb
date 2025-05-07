@@ -318,7 +318,7 @@ module Homebrew
           opoo "HOMEBREW_AUTOREMOVE is now a no-op as it is the default behaviour. " \
                "Set HOMEBREW_NO_AUTOREMOVE=1 to disable it."
         end
-        Cleanup.autoremove(dry_run: dry_run?) unless Homebrew::EnvConfig.no_autoremove?
+        Cleanup.autoremove() unless Homebrew::EnvConfig.no_autoremove?
 
         cleanup_cache
         cleanup_empty_api_source_directories
@@ -706,53 +706,40 @@ module Homebrew
       puts "from #{HOMEBREW_PREFIX}"
     end
 
-    def self.remover(package)
-      unneeded = [Formula[package]]
-      need_stack = []
-
-      Formula[package].deps.send("required").each do
-        |child| need_stack << [Formula[package], Formula[child.name]]
-      end
-
-      while need_stack.count > 0 do
-        curr = need_stack.shift
-        dependents = curr.last.runtime_installed_formula_dependents.select {
-          |par| par.deps.send("required").map(&:name).include? curr.last.name
-        }
-
-        if dependents.count == 1 && dependents.first.name == curr.first.name
-         unneeded << curr.last
-         curr.last.deps.send("required").each do
-          |gc| need_stack << [curr.last, Formula[gc.name]]
-         end
-        end
-      end
-      unneeded
-    end
-
-    def self.autoremove(dry_run: false, named_args: [])
-      require "utils/autoremove"
+    def self.gui_remove(package)
+      require "uninstall"
       require "cask/caskroom"
 
-      # If this runs after install, uninstall, reinstall or upgrade,
-      # the cache of installed formulae may no longer be valid.
-      Formula.clear_cache unless dry_run
+      puts "#{Formatter.error("✘")}#{Tty.bold} #{package.name}#{Tty.reset}"
+      kegs_by_rack = [package].filter_map(&:any_installed_keg).group_by(&:rack)
+      Uninstall.uninstall_kegs(kegs_by_rack)
+      Formula.clear_cache
+    end
 
-      named_args.each do |package|
-        verb = dry_run ? "Would autoremove" : "Autoremoving"
-        unneeded = remover(package)
-        oh1 "#{verb} #{unneeded.count} unneeded #{Utils.pluralize("formula", unneeded.count, plural: "e")} for #{package}:"
-        unneeded.each do |elem|
-          puts "#{Formatter.error("✘")}#{Tty.bold} #{elem.name}#{Tty.reset}"
+    def self.recurse_remove(packages)
+      packages.each do |package|
+        dependents = package.runtime_installed_formula_dependents.select {
+          |par| par.deps.send("required").map(&:name).include? package.name
+        }
+
+        if dependents.count == 0
+          deps = package.deps.send("required").map{|child| Formula[child.name]}
+          gui_remove(package)
+          recurse_remove(deps)
         end
-        next if dry_run
-        require "uninstall"
-        kegs_by_rack = unneeded.filter_map(&:any_installed_keg).group_by(&:rack)
-        Uninstall.uninstall_kegs(kegs_by_rack)
-        Formula.clear_cache
+      end
+    end
+
+    def self.autoremove(named_args: [])
+      named_args.each do |package|
+        oh1 "Autoremoving for package #{package}:"
+        deps = Formula[package].deps.send("required").map{|child| Formula[child.name]}
+        gui_remove(Formula[package])
+        recurse_remove(deps)
       end
     end
   end
 end
 
 require "extend/os/cleanup"
+
