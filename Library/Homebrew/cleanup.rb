@@ -733,7 +733,7 @@ module Homebrew
 
     def self.autoremove(named_args: [])
       named_args.each do |package|
-        oh1 "Autoremoving for package #{package}:"
+        oh1 "Autoremoving for package #{Formatter.identifier(package)}:"
         deps = Formula[package].deps.send("required").map{|child| Formula[child.name]}
         gui_remove(Formula[package])
         recurse_remove(deps)

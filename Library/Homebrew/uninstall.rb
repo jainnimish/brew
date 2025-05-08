@@ -39,7 +39,7 @@ module Homebrew
             end
 
             keg.lock do
-              puts "#{Formatter.error("✘")}#{Tty.bold} #{keg.name}#{Tty.reset} ... (#{keg.abv})"
+              puts "#{Formatter.error("✘")}#{Tty.bold} #{keg.name}#{Tty.reset}... (#{keg.abv})"
               keg.unlink
               keg.uninstall
               rack = keg.rack
