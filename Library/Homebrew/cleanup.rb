@@ -710,10 +710,11 @@ module Homebrew
       require "uninstall"
       require "cask/caskroom"
 
-      puts "#{Formatter.error("✘")}#{Tty.bold} #{package.name}#{Tty.reset}"
       kegs_by_rack = [package].filter_map(&:any_installed_keg).group_by(&:rack)
-      Uninstall.uninstall_kegs(kegs_by_rack)
-      Formula.clear_cache
+      if !kegs_by_rack.empty?
+        Uninstall.uninstall_kegs(kegs_by_rack, ignore_dependencies: true, supress_config_leftover: true)
+        Formula.clear_cache
+      end
     end
 
     def self.recurse_remove(packages)
@@ -722,7 +723,7 @@ module Homebrew
           |par| par.deps.send("required").map(&:name).include? package.name
         }
 
-        if dependents.count == 0
+        if dependents.empty?
           deps = package.deps.send("required").map{|child| Formula[child.name]}
           gui_remove(package)
           recurse_remove(deps)
@@ -736,6 +737,7 @@ module Homebrew
         deps = Formula[package].deps.send("required").map{|child| Formula[child.name]}
         gui_remove(Formula[package])
         recurse_remove(deps)
+        puts ""
       end
     end
   end
