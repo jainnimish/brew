@@ -318,7 +318,7 @@ module Homebrew
           opoo "HOMEBREW_AUTOREMOVE is now a no-op as it is the default behaviour. " \
                "Set HOMEBREW_NO_AUTOREMOVE=1 to disable it."
         end
-        Cleanup.autoremove() unless Homebrew::EnvConfig.no_autoremove?
+        Cleanup.post_clean() unless Homebrew::EnvConfig.no_autoremove?
 
         cleanup_cache
         cleanup_empty_api_source_directories
@@ -712,13 +712,16 @@ module Homebrew
 
       kegs_by_rack = [package].filter_map(&:any_installed_keg).group_by(&:rack)
       if !kegs_by_rack.empty?
-        Uninstall.uninstall_kegs(kegs_by_rack, ignore_dependencies: true, supress_config_leftover: true)
+        Uninstall.uninstall_kegs(kegs_by_rack, supress_config_leftover: true)
         Formula.clear_cache
       end
     end
 
     def self.recurse_remove(packages)
+      require "tab"
+
       packages.each do |package|
+        next if Tab.for_formula(package).installed_on_request
         dependents = package.runtime_installed_formula_dependents.select {
           |par| par.deps.send("required").map(&:name).include? package.name
         }
@@ -731,17 +734,45 @@ module Homebrew
       end
     end
 
+    def self.post_clean()
+      require "utils/autoremove"
+      require "cask/caskroom"
+
+      formulae = Formula.installed
+      # Remove formulae listed in HOMEBREW_NO_CLEANUP_FORMULAE and their dependencies.
+      if Homebrew::EnvConfig.no_cleanup_formulae.present?
+        formulae -= formulae.select { skip_clean_formula?(_1) }
+                            .flat_map { |f| [f, *f.runtime_formula_dependencies] }
+      end
+      casks = Cask::Caskroom.casks
+
+      removable_formulae = Utils::Autoremove.removable_formulae(formulae, casks)
+
+      return if removable_formulae.blank?
+
+      formulae_names = removable_formulae.map(&:full_name).sort
+
+      oh1 "Removing #{formulae_names.count} unneeded #{Utils.pluralize("formula", formulae_names.count, plural: "e")}:"
+
+      require "uninstall"
+      kegs_by_rack = removable_formulae.filter_map(&:any_installed_keg).group_by(&:rack)
+      Uninstall.uninstall_kegs(kegs_by_rack)
+      Formula.clear_cache
+    end
+
     def self.autoremove(named_args: [])
+      require "utils/autoremove"
+
       named_args.each do |package|
-        oh1 "Autoremoving for package #{Formatter.identifier(package)}:"
+        oh1 "Autoremoving dependencies for package #{Formatter.identifier(package)}:"
         deps = Formula[package].deps.send("required").map{|child| Formula[child.name]}
         gui_remove(Formula[package])
         recurse_remove(deps)
         puts ""
       end
+      post_clean
     end
   end
 end
 
 require "extend/os/cleanup"
-
