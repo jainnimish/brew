@@ -11,15 +11,12 @@ module Homebrew
         description <<~EOS
           Uninstall formulae that were only installed as a dependency of another formula and are now no longer needed.
         EOS
-        switch "-n", "--dry-run",
-               description: "List what would be uninstalled, but do not actually uninstall anything."
-
-        named_args :none
+        named_args [:installed_formula], min: 1
       end
 
       sig { override.void }
       def run
-        Cleanup.autoremove(dry_run: args.dry_run?)
+        Cleanup.autoremove(named_args: args.named)
       end
     end
   end

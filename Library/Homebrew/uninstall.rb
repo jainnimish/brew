@@ -6,7 +6,7 @@ require "installed_dependents"
 module Homebrew
   # Helper module for uninstalling kegs.
   module Uninstall
-    def self.uninstall_kegs(kegs_by_rack, casks: [], force: false, ignore_dependencies: false, named_args: [])
+    def self.uninstall_kegs(kegs_by_rack, casks: [], force: false, ignore_dependencies: false, supress_config_leftover: false, named_args: [])
       handle_unsatisfied_dependents(kegs_by_rack,
                                     casks:,
                                     ignore_dependencies:,
@@ -39,7 +39,7 @@ module Homebrew
             end
 
             keg.lock do
-              puts "Uninstalling #{keg}... (#{keg.abv})"
+              puts "#{Formatter.error("✘")}#{Tty.bold} #{keg.name}#{Tty.reset}... (#{keg.abv})"
               keg.unlink
               keg.uninstall
               rack = keg.rack
@@ -54,7 +54,7 @@ module Homebrew
                 EOS
               end
 
-              next unless f
+              next unless f && !supress_config_leftover
 
               paths = f.pkgetc.find.map(&:to_s) if f.pkgetc.exist?
               if paths.present?
